@@ -20,6 +20,10 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
     @IBOutlet weak var mappingStatusLabel: UILabel!
     @IBOutlet weak var toggleSwitch: UISwitch!
 
+    // text file input & output
+    var fileHandlers = [FileHandle]()
+    let numTextFiles = 1
+
     // MARK: - View Life Cycle
     
     var multipeerSession: MultipeerSession!
@@ -63,7 +67,7 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
     }
     
     func hydrogenAtom() -> SCNGeometry {
-        let hydrogenAtom = SCNSphere(radius: 0.05)
+        let hydrogenAtom = SCNSphere(radius: 0.01)
         hydrogenAtom.firstMaterial!.diffuse.contents = UIColor.blue
         hydrogenAtom.firstMaterial!.specular.contents = UIColor.gray
       return hydrogenAtom
@@ -168,20 +172,37 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
     
     /// - Tag: GetWorldMap
     @IBAction func shareSession(_ button: UIButton) {
-        sceneView.session.getCurrentWorldMap { worldMap, error in
+        sceneView.session.getCurrentWorldMap { [self] worldMap, error in
             guard let map = worldMap
                 else { print("Error: \(error!.localizedDescription)"); return }
             guard let data = try? NSKeyedArchiver.archivedData(withRootObject: map, requiringSecureCoding: true)
                 else { fatalError("can't encode map") }
-            self.multipeerSession.sendToAllPeers(data)
+
+            if toggleSwitch.isOn {
+                // self.multipeerSession.sendToAllPeers(data)
+                var url = URL(fileURLWithPath: NSTemporaryDirectory())
+                url.appendPathComponent("trajectory")
+                let fileHandle: FileHandle? = FileHandle(forWritingAtPath: url.path)
+                fileHandle?.write(data)
+            } else {
+                do {
+                    var url = URL(fileURLWithPath: NSTemporaryDirectory())
+                    url.appendPathComponent("trajectory")
+                    
+                    let data = try Data(contentsOf: url)
+                    receivedData(data)
+                } catch {
+                    print("can't decode data")
+                }
+
+            }
         }
     }
     
     var mapProvider: MCPeerID?
 
     /// - Tag: ReceiveData
-    func receivedData(_ data: Data, from peer: MCPeerID) {
-        
+    func receivedData(_ data: Data) {
         do {
             if let worldMap = try NSKeyedUnarchiver.unarchivedObject(ofClass: ARWorldMap.self, from: data) {
                 // Run the session with the received world map.
@@ -189,21 +210,21 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
                 configuration.planeDetection = .horizontal
                 configuration.initialWorldMap = worldMap
                 sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
-                
-                // Remember who provided the map for showing UI feedback.
-                mapProvider = peer
             }
             else
             if let anchor = try NSKeyedUnarchiver.unarchivedObject(ofClass: ARAnchor.self, from: data) {
                 // Add anchor to the session, ARSCNView delegate adds visible content.
                 sceneView.session.add(anchor: anchor)
             }
-            else {
-                print("unknown data recieved from \(peer)")
-            }
         } catch {
-            print("can't decode data recieved from \(peer)")
+            print("can't decode data")
         }
+    }
+
+    func receivedData(_ data: Data, from peer: MCPeerID) {
+        // Remember who provided the map for showing UI feedback.
+        mapProvider = peer
+        receivedData(data)
     }
     
     // MARK: - AR session management
