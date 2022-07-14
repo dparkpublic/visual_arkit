@@ -20,10 +20,6 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
     @IBOutlet weak var mappingStatusLabel: UILabel!
     @IBOutlet weak var toggleSwitch: UISwitch!
 
-    // text file input & output
-    var fileHandlers = [FileHandle]()
-    let numTextFiles = 1
-
     // MARK: - View Life Cycle
     
     var multipeerSession: MultipeerSession!
@@ -101,9 +97,9 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
         case .notAvailable, .limited:
             sendMapButton.isEnabled = false
         case .extending:
-            sendMapButton.isEnabled = !multipeerSession.connectedPeers.isEmpty
+            sendMapButton.isEnabled = true
         case .mapped:
-            sendMapButton.isEnabled = !multipeerSession.connectedPeers.isEmpty
+            sendMapButton.isEnabled = true
         @unknown default:
             sendMapButton.isEnabled = false
         }
@@ -151,6 +147,29 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
     
     // MARK: - Multiuser shared session
     
+    func visualizeTrajectory(data:Data) {
+        if toggleSwitch.isOn {
+            var url = URL(fileURLWithPath: NSTemporaryDirectory())
+            url.appendPathComponent("trajectory.obj")
+            
+            // create new file
+            if (FileManager.default.createFile(atPath: url.path, contents: data, attributes: nil)) {
+                let fileHandle: FileHandle? = FileHandle(forWritingAtPath: url.path)
+                fileHandle?.write(data)
+            }
+        } else {
+            do {
+                var url = URL(fileURLWithPath: NSTemporaryDirectory())
+                url.appendPathComponent("trajectory.obj")
+                
+                let data = try Data(contentsOf: url)
+                receivedData(data)
+            } catch {
+                print("can't decode data")
+            }
+        }
+    }
+    
     /// - Tag: PlaceCharacter
     @IBAction func handleSceneTap(_ sender: UITapGestureRecognizer) {
         
@@ -167,7 +186,7 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
         // Send the anchor info to peers, so they can place the same content.
         guard let data = try? NSKeyedArchiver.archivedData(withRootObject: anchor, requiringSecureCoding: true)
             else { fatalError("can't encode anchor") }
-        self.multipeerSession.sendToAllPeers(data)
+        visualizeTrajectory(data: data)
     }
     
     /// - Tag: GetWorldMap
@@ -177,25 +196,7 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
                 else { print("Error: \(error!.localizedDescription)"); return }
             guard let data = try? NSKeyedArchiver.archivedData(withRootObject: map, requiringSecureCoding: true)
                 else { fatalError("can't encode map") }
-
-            if toggleSwitch.isOn {
-                // self.multipeerSession.sendToAllPeers(data)
-                var url = URL(fileURLWithPath: NSTemporaryDirectory())
-                url.appendPathComponent("trajectory")
-                let fileHandle: FileHandle? = FileHandle(forWritingAtPath: url.path)
-                fileHandle?.write(data)
-            } else {
-                do {
-                    var url = URL(fileURLWithPath: NSTemporaryDirectory())
-                    url.appendPathComponent("trajectory")
-                    
-                    let data = try Data(contentsOf: url)
-                    receivedData(data)
-                } catch {
-                    print("can't decode data")
-                }
-
-            }
+            visualizeTrajectory(data: data)
         }
     }
     
